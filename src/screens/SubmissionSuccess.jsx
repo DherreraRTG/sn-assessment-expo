@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { useState } from 'react';
 
 export default function SubmissionSuccess({ route, navigation }) {
-  const { instanceNumber, answered, skipped, submittedAt } = route.params || {};
+  const { instanceNumber, answered, skipped, submittedAt, failedPhotoCount, totalPhotos } = route.params || {};
   const [closeFailed, setCloseFailed] = useState(false);
 
   const time = submittedAt
@@ -29,6 +29,15 @@ export default function SubmissionSuccess({ route, navigation }) {
         <Text style={s.heading}>Submitted Successfully</Text>
 
         <Text style={s.sub}>Your assessment has been submitted to ServiceNow.</Text>
+
+        {failedPhotoCount > 0 && (
+          <View style={s.warning}>
+            <Text style={s.warningText}>
+              <Text style={s.warningBold}>{failedPhotoCount} of {totalPhotos} photo{failedPhotoCount !== 1 ? 's' : ''} could not be uploaded.</Text>
+              {' '}Your answers were saved. Please contact your administrator to re-upload the missing photos.
+            </Text>
+          </View>
+        )}
 
         <View style={s.divider} />
 
@@ -93,4 +102,10 @@ const s = StyleSheet.create({
   },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   closeHint: { marginTop: 4, fontSize: 13, color: '#67717e', textAlign: 'center' },
+  warning: {
+    backgroundColor: '#fff8e1', borderWidth: 1, borderColor: '#f9a825', borderRadius: 4,
+    padding: 12, marginTop: 12, width: '100%',
+  },
+  warningText: { fontSize: 13, color: '#5d4037', lineHeight: 20 },
+  warningBold: { fontWeight: '700' },
 });

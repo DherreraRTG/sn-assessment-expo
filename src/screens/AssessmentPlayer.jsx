@@ -887,39 +887,39 @@ export default function AssessmentPlayer({ route, navigation }) {
       // use the returned sys_id for all subsequent calls.
       const instanceId = preKnownInstanceId || result?.body?.instance_sys_id;
 
-      // Upload all attachments in parallel, tracking progress and collecting failures
+      let failedPhotoCount = 0;
       if (attachmentAnswers.length > 0 && instanceId) {
         setUploadProgress({ done: 0, total: attachmentAnswers.length });
-        const failed = [];
-        // Upload sequentially to avoid loading all blobs into memory at once
         for (let i = 0; i < attachmentAnswers.length; i++) {
           const { metricID, fileRef } = attachmentAnswers[i];
-          try {
-            let base64;
-            if (fileRef.startsWith('idb:')) {
-              const entry = await photoStore.load(fileRef);
-              if (!entry?.blob) throw new Error('Photo missing from local storage');
-              base64 = await blobToBase64(entry.blob);
-            } else {
-              base64 = fileRef; // legacy base64 format
+          let uploaded = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              let base64;
+              if (fileRef.startsWith('idb:')) {
+                const entry = await photoStore.load(fileRef);
+                if (!entry?.blob) throw new Error('Photo missing from local storage');
+                base64 = await blobToBase64(entry.blob);
+              } else {
+                base64 = fileRef; // legacy base64 format
+              }
+              await uploadAttachment(instanceId, metricID, base64);
+              uploaded = true;
+              break;
+            } catch (err) {
+              console.warn(`Photo ${i + 1} upload attempt ${attempt + 1} failed:`, err?.message);
+              if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
             }
-            await uploadAttachment(instanceId, metricID, base64);
-            if (fileRef.startsWith('idb:')) photoStore.remove(fileRef);
-          } catch {
-            failed.push(i + 1);
           }
+          if (!uploaded) failedPhotoCount++;
           setUploadProgress({ done: i + 1, total: attachmentAnswers.length });
         }
         setUploadProgress(null);
-        if (failed.length > 0) {
-          throw new Error(
-            `${failed.length} of ${attachmentAnswers.length} photo(s) failed to upload. ` +
-            `Answers are saved — check your connection and try again.`
-          );
+        if (failedPhotoCount > 0) {
+          console.error(`${failedPhotoCount} of ${attachmentAnswers.length} photo(s) failed to upload after 3 attempts.`);
         }
       }
 
-      // Only mark the NP task closed-complete after all attachments confirmed uploaded
       if (instanceId) {
         const instanceNumber = result?.body?.instance_number || instanceId;
         await assessmentStore.savePendingComplete({ instanceId, submittedAt, instanceNumber });
@@ -930,10 +930,12 @@ export default function AssessmentPlayer({ route, navigation }) {
       await assessmentStore.clear();
       await photoStore.clear();
       navigation.replace('SubmissionSuccess', {
-        instanceNumber: result?.body?.instance_number || instanceId,
-        answered: result?.body?.answered ?? null,
-        skipped: result?.body?.skipped ?? null,
+        instanceNumber:   result?.body?.instance_number || instanceId,
+        answered:         result?.body?.answered ?? null,
+        skipped:          result?.body?.skipped   ?? null,
         submittedAt,
+        failedPhotoCount: failedPhotoCount > 0 ? failedPhotoCount : undefined,
+        totalPhotos:      attachmentAnswers.length > 0 ? attachmentAnswers.length : undefined,
       });
     } catch (e) {
       const msg = e.message || '';
